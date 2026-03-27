@@ -26,9 +26,38 @@ body { font-family: system-ui, sans-serif; background: #f5f5f5; color: #333; dis
 }
 #drop-zone.dragover { border-color: #2563eb; background: #eff6ff; }
 #drop-zone input { display: none; }
-#map-container { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-#map-svg-wrap { flex: 1; position: relative; }
-#map-svg-wrap svg { width: 100%; height: 100%; }
+.file-loaded-panel {
+  display: none; border: 1px solid #ddd; border-radius: 8px; padding: 8px; background: #fafafa;
+}
+.file-loaded-header { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.file-loaded-name { font-size: 12px; font-weight: 600; color: #444; overflow-wrap: anywhere; }
+.file-loaded-actions { display: flex; gap: 6px; }
+.file-loaded-actions button {
+  border: 1px solid #ccc; border-radius: 4px; padding: 4px 7px; font-size: 11px; background: #fff; cursor: pointer;
+}
+.file-loaded-actions button:hover { background: #f0f0f0; }
+.file-loaded-actions .danger { border-color: #ef9a9a; color: #b71c1c; }
+.file-preview-status { margin-top: 6px; font-size: 11px; color: #777; }
+.file-comments-wrap {
+  margin-top: 6px; max-height: 90px; overflow: auto; border: 1px solid #e3e3e3; border-radius: 4px;
+  background: #fff; padding: 6px; font-size: 11px; color: #555; line-height: 1.35;
+}
+.file-comments-title { font-weight: 600; color: #666; margin-bottom: 4px; }
+.file-comments-line { white-space: nowrap; }
+.file-preview-wrap {
+  margin-top: 6px; max-height: 180px; overflow: auto; border: 1px solid #e3e3e3; border-radius: 4px; background: #fff;
+}
+.file-preview-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.file-preview-table th, .file-preview-table td {
+  border-bottom: 1px solid #eee; padding: 4px 6px; text-align: left; white-space: nowrap;
+}
+.file-preview-table th { position: sticky; top: 0; background: #f7f7f7; color: #555; font-weight: 600; }
+#map-container {
+  flex: 1; overflow: auto; padding: 16px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+}
+#map-svg-wrap { position: relative; width: 100%; }
+#map-svg-wrap svg { width: 100%; height: auto; display: block; }
 .country { stroke: #fff; stroke-width: 0.4; transition: fill 0.15s; cursor: pointer; }
 .country:hover { stroke: #444; stroke-width: 1.2; }
 #tooltip {
@@ -50,6 +79,7 @@ body { font-family: system-ui, sans-serif; background: #f5f5f5; color: #333; dis
   width: 100%; padding: 8px; font-size: 13px; border: 1px solid #ccc; border-radius: 4px;
   background: #fff; cursor: pointer; font-weight: 500;
 }
+#export-btns { gap: 10px; }
 #export-btns button:hover { background: #f0f0f0; }
 #unmatched-panel {
   display: none; max-height: 180px; overflow-y: auto; background: #fff8e1;
@@ -63,6 +93,7 @@ body { font-family: system-ui, sans-serif; background: #f5f5f5; color: #333; dis
 .range-row { display: flex; align-items: center; gap: 6px; }
 .range-row input[type="range"] { flex: 1; }
 .range-val { font-size: 11px; color: #888; min-width: 28px; text-align: right; }
+.helper-text { font-size: 11px; color: #777; line-height: 1.35; margin-top: 6px; }
 </style>
 </head>
 <body>
@@ -74,6 +105,23 @@ body { font-family: system-ui, sans-serif; background: #f5f5f5; color: #333; dis
     <div id="drop-zone">
       <p>Drop a CSV here or click to select</p>
       <input type="file" id="file-input" accept=".csv,.tsv,.txt">
+    </div>
+    <p id="upload-helper" class="helper-text">In GA, open <strong>Demographic details: Country</strong>, then use <strong>Share this report -> Download file -> CSV</strong>.</p>
+    <div id="file-loaded-panel" class="file-loaded-panel">
+      <div class="file-loaded-header">
+        <div id="loaded-file-name" class="file-loaded-name"></div>
+        <div class="file-loaded-actions">
+          <button type="button" id="change-file-btn" class="danger">Use different file</button>
+        </div>
+      </div>
+      <div id="file-preview-status" class="file-preview-status"></div>
+      <div id="file-comments-wrap" class="file-comments-wrap">
+        <div class="file-comments-title">Comments</div>
+        <div id="file-comments"></div>
+      </div>
+      <div class="file-preview-wrap">
+        <table id="file-preview-table" class="file-preview-table"></table>
+      </div>
     </div>
   </div>
 
@@ -88,8 +136,16 @@ body { font-family: system-ui, sans-serif; background: #f5f5f5; color: #333; dis
   </div>
 
   <div class="control-group">
-    <label for="subtitle-input">Subtitle (metric label)</label>
-    <input type="text" id="subtitle-input" value="">
+    <label>Title font size</label>
+    <div class="range-row">
+      <input type="range" id="title-fontsize" min="12" max="32" value="17">
+      <span class="range-val" id="title-fontsize-val">17</span>
+    </div>
+  </div>
+
+  <div class="control-group">
+    <label for="legend-label-input">Legend label</label>
+    <input type="text" id="legend-label-input" value="">
   </div>
 
   <div class="row-group">
@@ -137,20 +193,11 @@ body { font-family: system-ui, sans-serif; background: #f5f5f5; color: #333; dis
       <span class="range-val" id="legend-width-val">300</span>
     </div>
   </div>
-  <div class="row-group">
-    <div class="control-group">
-      <label>Ticks</label>
-      <div class="range-row">
-        <input type="range" id="legend-ticks" min="2" max="10" value="5">
-        <span class="range-val" id="legend-ticks-val">5</span>
-      </div>
-    </div>
-    <div class="control-group">
-      <label>Font size</label>
-      <div class="range-row">
-        <input type="range" id="legend-fontsize" min="8" max="18" value="11">
-        <span class="range-val" id="legend-fontsize-val">11</span>
-      </div>
+  <div class="control-group">
+    <label>Font size</label>
+    <div class="range-row">
+      <input type="range" id="legend-fontsize" min="8" max="18" value="11">
+      <span class="range-val" id="legend-fontsize-val">11</span>
     </div>
   </div>
 
@@ -161,6 +208,7 @@ body { font-family: system-ui, sans-serif; background: #f5f5f5; color: #333; dis
 
   <div class="control-group" id="export-btns">
     <button id="export-png">Export PNG</button>
+    <button id="share-link">Copy share URL</button>
   </div>
 </div>
 
@@ -171,54 +219,11 @@ body { font-family: system-ui, sans-serif; background: #f5f5f5; color: #333; dis
 </div>
 
 <script>
-// --- country name to ISO alpha-2 lookup (from isocountries.py) ---
-const NAME_TO_A2 = {"Afghanistan": "AF", "Aland Islands": "AX", "Albania": "AL", "Algeria": "DZ", "American Samoa": "AS", "Andorra": "AD", "Angola": "AO", "Anguilla": "AI", "Antarctica": "AQ", "Antigua And Barbuda": "AG", "Argentina": "AR", "Armenia": "AM", "Aruba": "AW", "Australia": "AU", "Austria": "AT", "Azerbaijan": "AZ", "Bahamas": "BS", "Bahrain": "BH", "Bangladesh": "BD", "Barbados": "BB", "Belarus": "BY", "Belgium": "BE", "Belize": "BZ", "Benin": "BJ", "Bermuda": "BM", "Bhutan": "BT", "Bolivia": "BO", "Bosnia & Herzegovina": "BA", "Botswana": "BW", "Bouvet Island": "BV", "Brazil": "BR", "British Indian Ocean Territory": "IO", "Brunei Darussalam": "BN", "Bulgaria": "BG", "Burkina Faso": "BF", "Burundi": "BI", "Cambodia": "KH", "Cameroon": "CM", "Canada": "CA", "Cape Verde": "CV", "Cayman Islands": "KY", "Central African Republic": "CF", "Chad": "TD", "Chile": "CL", "China": "CN", "Christmas Island": "CX", "Cocos (Keeling) Islands": "CC", "Colombia": "CO", "Comoros": "KM", "Congo": "CG", "Congo - Kinshasa": "CD", "Cook Islands": "CK", "Costa Rica": "CR", "C\u00f4te d\u2019Ivoire": "CI", "Croatia": "HR", "Cuba": "CU", "Cyprus": "CY", "Czechia": "CZ", "Denmark": "DK", "Djibouti": "DJ", "Dominica": "DM", "Dominican Republic": "DO", "Ecuador": "EC", "Egypt": "EG", "El Salvador": "SV", "Equatorial Guinea": "GQ", "Eritrea": "ER", "Estonia": "EE", "Ethiopia": "ET", "Falkland Islands (Malvinas)": "FK", "Faroe Islands": "FO", "Fiji": "FJ", "Finland": "FI", "France": "FR", "French Guiana": "GF", "French Polynesia": "PF", "French Southern Territories": "TF", "Gabon": "GA", "Gambia": "GM", "Georgia": "GE", "Germany": "DE", "Ghana": "GH", "Gibraltar": "GI", "Greece": "GR", "Greenland": "GL", "Grenada": "GD", "Guadeloupe": "GP", "Guam": "GU", "Guatemala": "GT", "Guernsey": "GG", "Guinea": "GN", "Guinea-Bissau": "GW", "Guyana": "GY", "Haiti": "HT", "Heard Island & Mcdonald Islands": "HM", "Holy See (Vatican City State)": "VA", "Honduras": "HN", "Hong Kong": "HK", "Hungary": "HU", "Iceland": "IS", "India": "IN", "Indonesia": "ID", "Iran": "IR", "Iraq": "IQ", "Ireland": "IE", "Isle Of Man": "IM", "Israel": "IL", "Italy": "IT", "Jamaica": "JM", "Japan": "JP", "Jersey": "JE", "Jordan": "JO", "Kazakhstan": "KZ", "Kenya": "KE", "Kiribati": "KI", "South Korea": "KR", "North Korea": "KP", "Kuwait": "KW", "Kyrgyzstan": "KG", "Laos": "LA", "Latvia": "LV", "Lebanon": "LB", "Lesotho": "LS", "Liberia": "LR", "Libya": "LY", "Liechtenstein": "LI", "Lithuania": "LT", "Luxembourg": "LU", "Macao": "MO", "North Macedonia": "MK", "Madagascar": "MG", "Malawi": "MW", "Malaysia": "MY", "Maldives": "MV", "Mali": "ML", "Malta": "MT", "Marshall Islands": "MH", "Martinique": "MQ", "Mauritania": "MR", "Mauritius": "MU", "Mayotte": "YT", "Mexico": "MX", "Micronesia, Federated States Of": "FM", "Moldova": "MD", "Monaco": "MC", "Mongolia": "MN", "Montenegro": "ME", "Montserrat": "MS", "Morocco": "MA", "Mozambique": "MZ", "Myanmar (Burma)": "MM", "Namibia": "NA", "Nauru": "NR", "Nepal": "NP", "Netherlands": "NL", "Netherlands Antilles": "AN", "New Caledonia": "NC", "New Zealand": "NZ", "Nicaragua": "NI", "Niger": "NE", "Nigeria": "NG", "Niue": "NU", "Norfolk Island": "NF", "Northern Mariana Islands": "MP", "Norway": "NO", "Oman": "OM", "Pakistan": "PK", "Palau": "PW", "Palestinian Territory, Occupied": "PS", "Panama": "PA", "Papua New Guinea": "PG", "Paraguay": "PY", "Peru": "PE", "Philippines": "PH", "Pitcairn": "PN", "Poland": "PL", "Portugal": "PT", "Puerto Rico": "PR", "Qatar": "QA", "Reunion": "RE", "Romania": "RO", "Russia": "RU", "Rwanda": "RW", "Saint Barthelemy": "BL", "Saint Helena": "SH", "Saint Kitts And Nevis": "KN", "Saint Lucia": "LC", "Saint Martin": "MF", "Saint Pierre And Miquelon": "PM", "Saint Vincent And Grenadines": "VC", "Samoa": "WS", "San Marino": "SM", "Sao Tome And Principe": "ST", "Saudi Arabia": "SA", "Senegal": "SN", "Serbia": "RS", "Seychelles": "SC", "Sierra Leone": "SL", "Singapore": "SG", "Slovakia": "SK", "Slovenia": "SI", "Solomon Islands": "SB", "Somalia": "SO", "South Africa": "ZA", "South Georgia And Sandwich Isl.": "GS", "Spain": "ES", "Sri Lanka": "LK", "Sudan": "SD", "Suriname": "SR", "Svalbard And Jan Mayen": "SJ", "Swaziland": "SZ", "Sweden": "SE", "Switzerland": "CH", "Syria": "SY", "Taiwan": "TW", "Tajikistan": "TJ", "Tanzania": "TZ", "Thailand": "TH", "Timor-Leste": "TL", "Togo": "TG", "Tokelau": "TK", "Tonga": "TO", "Trinidad & Tobago": "TT", "Tunisia": "TN", "T\u00fcrkiye": "TR", "Turkmenistan": "TM", "Turks And Caicos Islands": "TC", "Tuvalu": "TV", "Uganda": "UG", "Ukraine": "UA", "United Arab Emirates": "AE", "United Kingdom": "GB", "United States": "US", "United States Outlying Islands": "UM", "Uruguay": "UY", "Uzbekistan": "UZ", "Vanuatu": "VU", "Venezuela": "VE", "Vietnam": "VN", "Virgin Islands, British": "VG", "Virgin Islands, U.S.": "VI", "Wallis And Futuna": "WF", "Western Sahara": "EH", "Yemen": "YE", "Zambia": "ZM", "Zimbabwe": "ZW"};
+// --- country name to ISO alpha-2 lookup ---
+const NAME_TO_A2 = {"Afghanistan": "AF", "Aland Islands": "AX", "Albania": "AL", "Algeria": "DZ", "American Samoa": "AS", "Andorra": "AD", "Angola": "AO", "Anguilla": "AI", "Antarctica": "AQ", "Antigua And Barbuda": "AG", "Argentina": "AR", "Armenia": "AM", "Aruba": "AW", "Australia": "AU", "Austria": "AT", "Azerbaijan": "AZ", "Bahamas": "BS", "Bahrain": "BH", "Bangladesh": "BD", "Barbados": "BB", "Belarus": "BY", "Belgium": "BE", "Belize": "BZ", "Benin": "BJ", "Bermuda": "BM", "Bhutan": "BT", "Bolivia": "BO", "Bosnia & Herzegovina": "BA", "Botswana": "BW", "Bouvet Island": "BV", "Brazil": "BR", "British Indian Ocean Territory": "IO", "Brunei Darussalam": "BN", "Bulgaria": "BG", "Burkina Faso": "BF", "Burundi": "BI", "Cambodia": "KH", "Cameroon": "CM", "Canada": "CA", "Cape Verde": "CV", "Cayman Islands": "KY", "Central African Republic": "CF", "Chad": "TD", "Chile": "CL", "China": "CN", "Christmas Island": "CX", "Cocos (Keeling) Islands": "CC", "Colombia": "CO", "Comoros": "KM", "Congo": "CG", "Congo - Kinshasa": "CD", "Cook Islands": "CK", "Costa Rica": "CR", "C\u00f4te d\u2019Ivoire": "CI", "Croatia": "HR", "Cuba": "CU", "Cyprus": "CY", "Czechia": "CZ", "Denmark": "DK", "Djibouti": "DJ", "Dominica": "DM", "Dominican Republic": "DO", "Ecuador": "EC", "Egypt": "EG", "El Salvador": "SV", "Equatorial Guinea": "GQ", "Eritrea": "ER", "Estonia": "EE", "Ethiopia": "ET", "Falkland Islands (Malvinas)": "FK", "Faroe Islands": "FO", "Fiji": "FJ", "Finland": "FI", "France": "FR", "French Guiana": "GF", "French Polynesia": "PF", "French Southern Territories": "TF", "Gabon": "GA", "Gambia": "GM", "Georgia": "GE", "Germany": "DE", "Ghana": "GH", "Gibraltar": "GI", "Greece": "GR", "Greenland": "GL", "Grenada": "GD", "Guadeloupe": "GP", "Guam": "GU", "Guatemala": "GT", "Guernsey": "GG", "Guinea": "GN", "Guinea-Bissau": "GW", "Guyana": "GY", "Haiti": "HT", "Heard Island & Mcdonald Islands": "HM", "Holy See (Vatican City State)": "VA", "Honduras": "HN", "Hong Kong": "HK", "Hungary": "HU", "Iceland": "IS", "India": "IN", "Indonesia": "ID", "Iran": "IR", "Iraq": "IQ", "Ireland": "IE", "Isle Of Man": "IM", "Israel": "IL", "Italy": "IT", "Jamaica": "JM", "Japan": "JP", "Jersey": "JE", "Jordan": "JO", "Kazakhstan": "KZ", "Kenya": "KE", "Kiribati": "KI", "South Korea": "KR", "North Korea": "KP", "Kuwait": "KW", "Kyrgyzstan": "KG", "Laos": "LA", "Latvia": "LV", "Lebanon": "LB", "Lesotho": "LS", "Liberia": "LR", "Libya": "LY", "Liechtenstein": "LI", "Lithuania": "LT", "Luxembourg": "LU", "Macao": "MO", "North Macedonia": "MK", "Madagascar": "MG", "Malawi": "MW", "Malaysia": "MY", "Maldives": "MV", "Mali": "ML", "Malta": "MT", "Marshall Islands": "MH", "Martinique": "MQ", "Mauritania": "MR", "Mauritius": "MU", "Mayotte": "YT", "Mexico": "MX", "Micronesia, Federated States Of": "FM", "Moldova": "MD", "Monaco": "MC", "Mongolia": "MN", "Montenegro": "ME", "Montserrat": "MS", "Morocco": "MA", "Mozambique": "MZ", "Myanmar (Burma)": "MM", "Namibia": "NA", "Nauru": "NR", "Nepal": "NP", "Netherlands": "NL", "Netherlands Antilles": "AN", "New Caledonia": "NC", "New Zealand": "NZ", "Nicaragua": "NI", "Niger": "NE", "Nigeria": "NG", "Niue": "NU", "Norfolk Island": "NF", "Northern Mariana Islands": "MP", "Norway": "NO", "Oman": "OM", "Pakistan": "PK", "Palau": "PW", "Palestinian Territory, Occupied": "PS", "Panama": "PA", "Papua New Guinea": "PG", "Paraguay": "PY", "Peru": "PE", "Philippines": "PH", "Pitcairn": "PN", "Poland": "PL", "Portugal": "PT", "Puerto Rico": "PR", "Qatar": "QA", "Reunion": "RE", "Romania": "RO", "Russia": "RU", "Rwanda": "RW", "Saint Barthelemy": "BL", "Saint Helena": "SH", "Saint Kitts And Nevis": "KN", "Saint Lucia": "LC", "Saint Martin": "MF", "Saint Pierre And Miquelon": "PM", "Saint Vincent And Grenadines": "VC", "Samoa": "WS", "San Marino": "SM", "Sao Tome And Principe": "ST", "Saudi Arabia": "SA", "Senegal": "SN", "Serbia": "RS", "Seychelles": "SC", "Sierra Leone": "SL", "Singapore": "SG", "Slovakia": "SK", "Slovenia": "SI", "Solomon Islands": "SB", "Somalia": "SO", "South Africa": "ZA", "South Georgia And Sandwich Isl.": "GS", "Spain": "ES", "Sri Lanka": "LK", "Sudan": "SD", "Suriname": "SR", "Svalbard And Jan Mayen": "SJ", "Swaziland": "SZ", "Sweden": "SE", "Switzerland": "CH", "Syria": "SY", "Taiwan": "TW", "Tajikistan": "TJ", "Tanzania": "TZ", "Thailand": "TH", "Timor-Leste": "TL", "Togo": "TG", "Tokelau": "TK", "Tonga": "TO", "Trinidad & Tobago": "TT", "Tunisia": "TN", "T\u00fcrkiye": "TR", "Turkmenistan": "TM", "Turks And Caicos Islands": "TC", "Tuvalu": "TV", "Uganda": "UG", "Ukraine": "UA", "United Arab Emirates": "AE", "United Kingdom": "GB", "United States": "US", "United States Outlying Islands": "UM", "Uruguay": "UY", "Uzbekistan": "UZ", "Vanuatu": "VU", "Venezuela": "VE", "Vietnam": "VN", "Virgin Islands, British": "VG", "Virgin Islands, U.S.": "VI", "Wallis And Futuna": "WF", "Western Sahara": "EH", "Yemen": "YE", "Zambia": "ZM", "Zimbabwe": "ZW", "Turkey": "TR", "Cura\u00e7ao": "CW", "Curacao": "CW", "Sint Maarten": "SX", "Antigua & Barbuda": "AG", "Kosovo": "XK", "Palestine": "PS", "Eswatini": "SZ", "Ivory Coast": "CI", "Cote d'Ivoire": "CI", "C\u00f4te d'Ivoire": "CI", "Congo - Brazzaville": "CG", "Congo (Brazzaville)": "CG", "Congo (Kinshasa)": "CD", "DR Congo": "CD", "Republic of the Congo": "CG", "Democratic Republic of the Congo": "CD", "Myanmar": "MM", "Burma": "MM", "Brunei": "BN", "Macau": "MO", "Cabo Verde": "CV", "East Timor": "TL", "R\u00e9union": "RE", "St. Kitts & Nevis": "KN", "St. Lucia": "LC", "St. Vincent & Grenadines": "VC", "St. Martin": "MF", "St. Barth\u00e9lemy": "BL", "St. Pierre & Miquelon": "PM", "St. Helena": "SH", "U.S. Virgin Islands": "VI", "British Virgin Islands": "VG", "Micronesia": "FM", "Falkland Islands": "FK", "South Sudan": "SS", "Trinidad and Tobago": "TT", "Bosnia and Herzegovina": "BA"};
 
 // --- ISO alpha-2 to alpha-3 mapping ---
 const A2_TO_A3 = {"AF": "AFG", "AX": "ALA", "AL": "ALB", "DZ": "DZA", "AS": "ASM", "AD": "AND", "AO": "AGO", "AI": "AIA", "AQ": "ATA", "AG": "ATG", "AR": "ARG", "AM": "ARM", "AW": "ABW", "AU": "AUS", "AT": "AUT", "AZ": "AZE", "BS": "BHS", "BH": "BHR", "BD": "BGD", "BB": "BRB", "BY": "BLR", "BE": "BEL", "BZ": "BLZ", "BJ": "BEN", "BM": "BMU", "BT": "BTN", "BO": "BOL", "BQ": "BES", "BA": "BIH", "BW": "BWA", "BV": "BVT", "BR": "BRA", "IO": "IOT", "BN": "BRN", "BG": "BGR", "BF": "BFA", "BI": "BDI", "CV": "CPV", "KH": "KHM", "CM": "CMR", "CA": "CAN", "KY": "CYM", "CF": "CAF", "TD": "TCD", "CL": "CHL", "CN": "CHN", "CX": "CXR", "CC": "CCK", "CO": "COL", "KM": "COM", "CG": "COG", "CD": "COD", "CK": "COK", "CR": "CRI", "CI": "CIV", "HR": "HRV", "CU": "CUB", "CW": "CUW", "CY": "CYP", "CZ": "CZE", "DK": "DNK", "DJ": "DJI", "DM": "DMA", "DO": "DOM", "EC": "ECU", "EG": "EGY", "SV": "SLV", "GQ": "GNQ", "ER": "ERI", "EE": "EST", "SZ": "SWZ", "ET": "ETH", "FK": "FLK", "FO": "FRO", "FJ": "FJI", "FI": "FIN", "FR": "FRA", "GF": "GUF", "PF": "PYF", "TF": "ATF", "GA": "GAB", "GM": "GMB", "GE": "GEO", "DE": "DEU", "GH": "GHA", "GI": "GIB", "GR": "GRC", "GL": "GRL", "GD": "GRD", "GP": "GLP", "GU": "GUM", "GT": "GTM", "GG": "GGY", "GN": "GIN", "GW": "GNB", "GY": "GUY", "HT": "HTI", "HM": "HMD", "VA": "VAT", "HN": "HND", "HK": "HKG", "HU": "HUN", "IS": "ISL", "IN": "IND", "ID": "IDN", "IR": "IRN", "IQ": "IRQ", "IE": "IRL", "IM": "IMN", "IL": "ISR", "IT": "ITA", "JM": "JAM", "JP": "JPN", "JE": "JEY", "JO": "JOR", "KZ": "KAZ", "KE": "KEN", "KI": "KIR", "KP": "PRK", "KR": "KOR", "KW": "KWT", "KG": "KGZ", "LA": "LAO", "LV": "LVA", "LB": "LBN", "LS": "LSO", "LR": "LBR", "LY": "LBY", "LI": "LIE", "LT": "LTU", "LU": "LUX", "MO": "MAC", "MG": "MDG", "MW": "MWI", "MY": "MYS", "MV": "MDV", "ML": "MLI", "MT": "MLT", "MH": "MHL", "MQ": "MTQ", "MR": "MRT", "MU": "MUS", "YT": "MYT", "MX": "MEX", "FM": "FSM", "MD": "MDA", "MC": "MCO", "MN": "MNG", "ME": "MNE", "MS": "MSR", "MA": "MAR", "MZ": "MOZ", "MM": "MMR", "NA": "NAM", "NR": "NRU", "NP": "NPL", "NL": "NLD", "NC": "NCL", "NZ": "NZL", "NI": "NIC", "NE": "NER", "NG": "NGA", "NU": "NIU", "NF": "NFK", "MK": "MKD", "MP": "MNP", "NO": "NOR", "OM": "OMN", "PK": "PAK", "PW": "PLW", "PS": "PSE", "PA": "PAN", "PG": "PNG", "PY": "PRY", "PE": "PER", "PH": "PHL", "PN": "PCN", "PL": "POL", "PT": "PRT", "PR": "PRI", "QA": "QAT", "RE": "REU", "RO": "ROU", "RU": "RUS", "RW": "RWA", "BL": "BLM", "SH": "SHN", "KN": "KNA", "LC": "LCA", "MF": "MAF", "PM": "SPM", "VC": "VCT", "WS": "WSM", "SM": "SMR", "ST": "STP", "SA": "SAU", "SN": "SEN", "RS": "SRB", "SC": "SYC", "SL": "SLE", "SG": "SGP", "SX": "SXM", "SK": "SVK", "SI": "SVN", "SB": "SLB", "SO": "SOM", "ZA": "ZAF", "GS": "SGS", "SS": "SSD", "ES": "ESP", "LK": "LKA", "SD": "SDN", "SR": "SUR", "SJ": "SJM", "SE": "SWE", "CH": "CHE", "SY": "SYR", "TW": "TWN", "TJ": "TJK", "TZ": "TZA", "TH": "THA", "TL": "TLS", "TG": "TGO", "TK": "TKL", "TO": "TON", "TT": "TTO", "TN": "TUN", "TR": "TUR", "TM": "TKM", "TC": "TCA", "TV": "TUV", "UG": "UGA", "UA": "UKR", "AE": "ARE", "GB": "GBR", "US": "USA", "UM": "UMI", "UY": "URY", "UZ": "UZB", "VU": "VUT", "VE": "VEN", "VN": "VNM", "VG": "VGB", "VI": "VIR", "WF": "WLF", "EH": "ESH", "YE": "YEM", "ZM": "ZMB", "ZW": "ZWE", "AN": "ANT", "XK": "XKX"};
-
-// GA-specific alternate names that differ from isocountries.py
-const GA_ALIASES = {
-  "Turkey": "TR",
-  "Cura\u00e7ao": "CW",
-  "Curacao": "CW",
-  "Sint Maarten": "SX",
-  "Antigua & Barbuda": "AG",
-  "Kosovo": "XK",
-  "Palestine": "PS",
-  "Eswatini": "SZ",
-  "Ivory Coast": "CI",
-  "Cote d'Ivoire": "CI",
-  "C\u00f4te d'Ivoire": "CI",
-  "Congo - Brazzaville": "CG",
-  "Congo (Brazzaville)": "CG",
-  "Congo (Kinshasa)": "CD",
-  "DR Congo": "CD",
-  "Republic of the Congo": "CG",
-  "Democratic Republic of the Congo": "CD",
-  "Myanmar": "MM",
-  "Burma": "MM",
-  "Brunei": "BN",
-  "Macau": "MO",
-  "Cabo Verde": "CV",
-  "East Timor": "TL",
-  "R\u00e9union": "RE",
-  "St. Kitts & Nevis": "KN",
-  "St. Lucia": "LC",
-  "St. Vincent & Grenadines": "VC",
-  "St. Martin": "MF",
-  "St. Barth\u00e9lemy": "BL",
-  "St. Pierre & Miquelon": "PM",
-  "St. Helena": "SH",
-  "U.S. Virgin Islands": "VI",
-  "British Virgin Islands": "VG",
-  "Micronesia": "FM",
-  "Falkland Islands": "FK",
-  "South Sudan": "SS",
-  "Trinidad and Tobago": "TT",
-  "Bosnia and Herzegovina": "BA",
-};
-Object.assign(NAME_TO_A2, GA_ALIASES);
 
 const IGNORED_NAMES = new Set(["(not set)", "(not provided)"]);
 
@@ -242,13 +247,25 @@ let numericColumns = [];
 let dataByA3 = {};
 let scaleType = "log";
 let unmatchedCountries = [];
+let resizeTimer = null;
+let loadedFileText = "";
+let loadedFilename = "";
 
 // --- DOM refs ---
 const dropZone = document.getElementById("drop-zone");
 const fileInput = document.getElementById("file-input");
+const uploadHelper = document.getElementById("upload-helper");
+const fileLoadedPanel = document.getElementById("file-loaded-panel");
+const loadedFileName = document.getElementById("loaded-file-name");
+const changeFileBtn = document.getElementById("change-file-btn");
+const filePreviewStatus = document.getElementById("file-preview-status");
+const fileCommentsWrap = document.getElementById("file-comments-wrap");
+const fileComments = document.getElementById("file-comments");
+const filePreviewTable = document.getElementById("file-preview-table");
 const metricSelect = document.getElementById("metric-select");
 const titleInput = document.getElementById("title-input");
-const subtitleInput = document.getElementById("subtitle-input");
+const titleFontsizeInput = document.getElementById("title-fontsize");
+const legendLabelInput = document.getElementById("legend-label-input");
 const colorSelect = document.getElementById("color-select");
 const projectionSelect = document.getElementById("projection-select");
 const btnLog = document.getElementById("btn-log");
@@ -258,10 +275,12 @@ const tooltip = document.getElementById("tooltip");
 const unmatchedPanel = document.getElementById("unmatched-panel");
 const unmatchedList = document.getElementById("unmatched-list");
 const legendWidthInput = document.getElementById("legend-width");
-const legendTicksInput = document.getElementById("legend-ticks");
 const legendFontsizeInput = document.getElementById("legend-fontsize");
+const shareLinkBtn = document.getElementById("share-link");
 
-// custom teal interpolator matching the reference Highcharts style
+setUploadUI(false);
+
+// custom teal interpolator for map fill
 function interpolateTeal(t) {
   // from light gray-green (#cbdad7) to deep teal (#0a516d)
   const r = Math.round(203 + t * (10 - 203));
@@ -299,6 +318,75 @@ dropZone.addEventListener("drop", e => {
   if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
 });
 fileInput.addEventListener("change", e => { if (e.target.files.length) handleFile(e.target.files[0]); });
+changeFileBtn.addEventListener("click", () => clearLoadedFile(true));
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function setUploadUI(hasFile) {
+  dropZone.style.display = hasFile ? "none" : "block";
+  uploadHelper.style.display = hasFile ? "none" : "block";
+  fileLoadedPanel.style.display = hasFile ? "block" : "none";
+}
+
+function renderFilePreview(filename, headers, rows, comments) {
+  const cols = (headers || []).filter(Boolean);
+  const previewRows = rows.slice(0, 15);
+  const previewComments = (comments || []).slice(0, 20);
+  loadedFileName.textContent = filename;
+  filePreviewStatus.textContent = `${rows.length.toLocaleString()} rows loaded`;
+  if (previewComments.length) {
+    fileCommentsWrap.style.display = "block";
+    fileComments.innerHTML = previewComments
+      .map(line => `<div class="file-comments-line">${escapeHtml(line)}</div>`)
+      .join("");
+  } else {
+    fileCommentsWrap.style.display = "none";
+    fileComments.innerHTML = "";
+  }
+  if (!cols.length) {
+    filePreviewTable.innerHTML = "";
+    return;
+  }
+  const headHtml = `<thead><tr>${cols.map(c => `<th>${escapeHtml(c)}</th>`).join("")}</tr></thead>`;
+  const bodyHtml = `<tbody>${previewRows.map(row => {
+    const cells = cols.map(col => {
+      const raw = row[col];
+      const val = raw == null ? "" : (typeof raw === "number" ? raw.toLocaleString() : String(raw));
+      return `<td>${escapeHtml(val)}</td>`;
+    }).join("");
+    return `<tr>${cells}</tr>`;
+  }).join("")}</tbody>`;
+  filePreviewTable.innerHTML = headHtml + bodyHtml;
+}
+
+function clearLoadedFile(openPicker = false) {
+  fileInput.value = "";
+  parsedRows = [];
+  numericColumns = [];
+  dataByA3 = {};
+  unmatchedCountries = [];
+  loadedFileText = "";
+  loadedFilename = "";
+  metricSelect.innerHTML = "<option>Load a CSV first</option>";
+  metricSelect.disabled = true;
+  unmatchedPanel.style.display = "none";
+  unmatchedList.innerHTML = "";
+  loadedFileName.textContent = "";
+  filePreviewStatus.textContent = "";
+  fileCommentsWrap.style.display = "none";
+  fileComments.innerHTML = "";
+  filePreviewTable.innerHTML = "";
+  setUploadUI(false);
+  if (svg) drawCountries();
+  if (openPicker) fileInput.click();
+}
 
 function handleFile(file) {
   const reader = new FileReader();
@@ -308,12 +396,18 @@ function handleFile(file) {
 
 function parseCSV(text, filename) {
   const lines = text.split("\n");
-  const dataLines = lines.filter(l => !l.startsWith("#"));
+  const commentLines = lines
+    .filter(l => l.trim().startsWith("#"))
+    .map(l => l.trim().replace(/^#\s?/, ""))
+    .filter(Boolean);
+  const dataLines = lines.filter(l => !l.trim().startsWith("#"));
   const cleaned = dataLines.join("\n");
 
   const result = Papa.parse(cleaned, { header: true, dynamicTyping: true, skipEmptyLines: true });
   parsedRows = result.data;
   if (!parsedRows.length) return;
+  loadedFileText = text;
+  loadedFilename = filename;
 
   const headers = result.meta.fields;
   numericColumns = headers.filter(h => parsedRows.some(r => typeof r[h] === "number" && isFinite(r[h])));
@@ -332,9 +426,126 @@ function parseCSV(text, filename) {
 
   const baseName = filename.replace(/\.[^.]+$/, "");
   titleInput.value = baseName;
-  subtitleInput.value = metricSelect.value;
+  legendLabelInput.value = metricSelect.value;
+  renderFilePreview(filename, headers, parsedRows, commentLines);
+  setUploadUI(true);
 
   processData();
+}
+
+function parseOptionValue(selectEl, value) {
+  if (value == null) return;
+  if ([...selectEl.options].some(opt => opt.value === value)) selectEl.value = value;
+}
+
+function parseRangeValue(inputEl, value, fallback) {
+  if (value == null) return fallback;
+  const n = Number(value);
+  if (!isFinite(n)) return fallback;
+  return Math.min(Number(inputEl.max), Math.max(Number(inputEl.min), n));
+}
+
+function encodeBase64Url(text) {
+  const bytes = new TextEncoder().encode(text);
+  let binary = "";
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function decodeBase64Url(encoded) {
+  const padded = encoded.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - encoded.length % 4) % 4);
+  const binary = atob(padded);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new TextDecoder().decode(bytes);
+}
+
+function applyStateFromHash() {
+  const rawHash = window.location.hash.startsWith("#") ? window.location.hash.slice(1) : window.location.hash;
+  if (!rawHash) return;
+  const params = new URLSearchParams(rawHash);
+  let csvText = params.get("csv");
+  const csvB64 = params.get("csvb64");
+  if (!csvText && csvB64) {
+    try {
+      csvText = decodeBase64Url(csvB64);
+    } catch (err) {
+      return;
+    }
+  }
+  if (!csvText) return;
+
+  const filename = params.get("filename") || "shared-map.csv";
+  parseCSV(csvText, filename);
+  if (!parsedRows.length) return;
+
+  const metric = params.get("metric");
+  if (metric && numericColumns.includes(metric)) metricSelect.value = metric;
+  if (params.has("title")) titleInput.value = params.get("title");
+  if (params.has("legendLabel")) legendLabelInput.value = params.get("legendLabel");
+
+  parseOptionValue(colorSelect, params.get("color"));
+  parseOptionValue(projectionSelect, params.get("projection"));
+
+  const titleFont = parseRangeValue(titleFontsizeInput, params.get("titleFont"), +titleFontsizeInput.value);
+  titleFontsizeInput.value = String(titleFont);
+  document.getElementById("title-fontsize-val").textContent = String(titleFont);
+
+  const legendWidth = parseRangeValue(legendWidthInput, params.get("legendWidth"), +legendWidthInput.value);
+  legendWidthInput.value = String(legendWidth);
+  document.getElementById("legend-width-val").textContent = String(legendWidth);
+
+  const legendFont = parseRangeValue(legendFontsizeInput, params.get("legendFont"), +legendFontsizeInput.value);
+  legendFontsizeInput.value = String(legendFont);
+  document.getElementById("legend-fontsize-val").textContent = String(legendFont);
+
+  const scale = params.get("scale");
+  if (scale === "linear") {
+    scaleType = "linear";
+    btnLinear.classList.add("active");
+    btnLog.classList.remove("active");
+  } else {
+    scaleType = "log";
+    btnLog.classList.add("active");
+    btnLinear.classList.remove("active");
+  }
+
+  processData();
+  window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+}
+
+function buildShareUrl() {
+  if (!loadedFileText) return null;
+  const hashParams = new URLSearchParams();
+  hashParams.set("filename", loadedFilename || "shared-map.csv");
+  hashParams.set("csvb64", encodeBase64Url(loadedFileText));
+  hashParams.set("metric", metricSelect.value || "");
+  hashParams.set("title", titleInput.value || "");
+  hashParams.set("legendLabel", legendLabelInput.value || "");
+  hashParams.set("color", colorSelect.value || "");
+  hashParams.set("projection", projectionSelect.value || "");
+  hashParams.set("scale", scaleType);
+  hashParams.set("titleFont", titleFontsizeInput.value);
+  hashParams.set("legendWidth", legendWidthInput.value);
+  hashParams.set("legendFont", legendFontsizeInput.value);
+
+  const url = new URL(window.location.href);
+  url.hash = hashParams.toString();
+  return url.toString();
+}
+
+async function copyShareLink() {
+  const url = buildShareUrl();
+  if (!url) {
+    window.alert("Load a CSV first to create a share link.");
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(url);
+    window.alert("Share link copied.");
+  } catch (err) {
+    window.prompt("Copy share link:", url);
+  }
 }
 
 function processData() {
@@ -391,17 +602,19 @@ function showUnmatched() {
 
 // --- map rendering ---
 let svg, mapGroup, projection, path, countries;
+let mapVisualTop = 0;
+let mapVisualBottom = 0;
 
 // antarctica numeric id
 const ANTARCTICA_ID = "010";
 
 const NUM_TO_A3 = {"004": "AFG", "248": "ALA", "008": "ALB", "012": "DZA", "016": "ASM", "020": "AND", "024": "AGO", "660": "AIA", "010": "ATA", "028": "ATG", "032": "ARG", "051": "ARM", "533": "ABW", "036": "AUS", "040": "AUT", "031": "AZE", "044": "BHS", "048": "BHR", "050": "BGD", "052": "BRB", "112": "BLR", "056": "BEL", "084": "BLZ", "204": "BEN", "060": "BMU", "064": "BTN", "068": "BOL", "535": "BES", "070": "BIH", "072": "BWA", "074": "BVT", "076": "BRA", "086": "IOT", "096": "BRN", "100": "BGR", "854": "BFA", "108": "BDI", "132": "CPV", "116": "KHM", "120": "CMR", "124": "CAN", "136": "CYM", "140": "CAF", "148": "TCD", "152": "CHL", "156": "CHN", "162": "CXR", "166": "CCK", "170": "COL", "174": "COM", "178": "COG", "180": "COD", "184": "COK", "188": "CRI", "384": "CIV", "191": "HRV", "192": "CUB", "531": "CUW", "196": "CYP", "203": "CZE", "208": "DNK", "262": "DJI", "212": "DMA", "214": "DOM", "218": "ECU", "818": "EGY", "222": "SLV", "226": "GNQ", "232": "ERI", "233": "EST", "748": "SWZ", "231": "ETH", "238": "FLK", "234": "FRO", "242": "FJI", "246": "FIN", "250": "FRA", "254": "GUF", "258": "PYF", "260": "ATF", "266": "GAB", "270": "GMB", "268": "GEO", "276": "DEU", "288": "GHA", "292": "GIB", "300": "GRC", "304": "GRL", "308": "GRD", "312": "GLP", "316": "GUM", "320": "GTM", "831": "GGY", "324": "GIN", "624": "GNB", "328": "GUY", "332": "HTI", "334": "HMD", "336": "VAT", "340": "HND", "344": "HKG", "348": "HUN", "352": "ISL", "356": "IND", "360": "IDN", "364": "IRN", "368": "IRQ", "372": "IRL", "833": "IMN", "376": "ISR", "380": "ITA", "388": "JAM", "392": "JPN", "832": "JEY", "400": "JOR", "398": "KAZ", "404": "KEN", "296": "KIR", "408": "PRK", "410": "KOR", "414": "KWT", "417": "KGZ", "418": "LAO", "428": "LVA", "422": "LBN", "426": "LSO", "430": "LBR", "434": "LBY", "438": "LIE", "440": "LTU", "442": "LUX", "446": "MAC", "450": "MDG", "454": "MWI", "458": "MYS", "462": "MDV", "466": "MLI", "470": "MLT", "584": "MHL", "474": "MTQ", "478": "MRT", "480": "MUS", "175": "MYT", "484": "MEX", "583": "FSM", "498": "MDA", "492": "MCO", "496": "MNG", "499": "MNE", "500": "MSR", "504": "MAR", "508": "MOZ", "104": "MMR", "516": "NAM", "520": "NRU", "524": "NPL", "528": "NLD", "540": "NCL", "554": "NZL", "558": "NIC", "562": "NER", "566": "NGA", "570": "NIU", "574": "NFK", "807": "MKD", "580": "MNP", "578": "NOR", "512": "OMN", "586": "PAK", "585": "PLW", "275": "PSE", "591": "PAN", "598": "PNG", "600": "PRY", "604": "PER", "608": "PHL", "612": "PCN", "616": "POL", "620": "PRT", "630": "PRI", "634": "QAT", "638": "REU", "642": "ROU", "643": "RUS", "646": "RWA", "652": "BLM", "654": "SHN", "659": "KNA", "662": "LCA", "663": "MAF", "666": "SPM", "670": "VCT", "882": "WSM", "674": "SMR", "678": "STP", "682": "SAU", "686": "SEN", "688": "SRB", "690": "SYC", "694": "SLE", "702": "SGP", "534": "SXM", "703": "SVK", "705": "SVN", "090": "SLB", "706": "SOM", "710": "ZAF", "239": "SGS", "728": "SSD", "724": "ESP", "144": "LKA", "729": "SDN", "740": "SUR", "744": "SJM", "752": "SWE", "756": "CHE", "760": "SYR", "158": "TWN", "762": "TJK", "834": "TZA", "764": "THA", "626": "TLS", "768": "TGO", "772": "TKL", "776": "TON", "780": "TTO", "788": "TUN", "792": "TUR", "795": "TKM", "796": "TCA", "798": "TUV", "800": "UGA", "804": "UKR", "784": "ARE", "826": "GBR", "840": "USA", "581": "UMI", "858": "URY", "860": "UZB", "548": "VUT", "862": "VEN", "704": "VNM", "092": "VGB", "850": "VIR", "876": "WLF", "732": "ESH", "887": "YEM", "894": "ZMB", "716": "ZWE", "-99": "XKX"};
 
-function createProjection(w, h) {
+function createProjection(w) {
   const projName = projectionSelect.value;
   const proj = d3[projName]();
   const featureCollection = { type: "FeatureCollection", features: countries };
-  proj.fitSize([w, h], featureCollection);
+  proj.fitWidth(w, featureCollection);
   return proj;
 }
 
@@ -415,14 +628,35 @@ function rebuildMap() {
 
 function initMap() {
   const rect = svgWrap.getBoundingClientRect();
-  const w = rect.width, h = rect.height;
-  const titleH = 28;
-  const legendH = 44;
-  const mapH = h - titleH - legendH;
+  const w = Math.max(320, Math.floor(rect.width));
+  const titleFontSize = +titleFontsizeInput.value;
+  const legendFontSize = +legendFontsizeInput.value;
+  const legendLabel = legendLabelInput.value.trim();
+  const topPad = 10;
+  const titleGapToMap = 38;
+  const legendGapFromMap = 12;
+  const bottomPad = 14;
+  const legendBarH = Math.max(10, legendFontSize + 1);
+  const legendAxisH = legendFontSize + 8;
+  const legendLabelH = legendLabel ? legendFontSize + 8 : 0;
 
   // filter out antarctica
   const allFeatures = topojson.feature(worldTopo, worldTopo.objects.countries).features;
   countries = allFeatures.filter(f => f.id !== ANTARCTICA_ID);
+
+  projection = createProjection(w);
+  path = d3.geoPath(projection);
+  const featureCollection = { type: "FeatureCollection", features: countries };
+  const projectedBounds = path.bounds(featureCollection);
+  const mapY0 = projectedBounds[0][1];
+  const mapY1 = projectedBounds[1][1];
+  const mapOffsetY = topPad + titleFontSize + titleGapToMap - mapY0;
+
+  mapVisualTop = mapY0 + mapOffsetY;
+  mapVisualBottom = mapY1 + mapOffsetY;
+  const h = Math.ceil(
+    mapVisualBottom + legendGapFromMap + legendLabelH + legendBarH + legendAxisH + bottomPad
+  );
 
   svg = d3.select(svgWrap).append("svg")
     .attr("id", "map-svg")
@@ -432,44 +666,20 @@ function initMap() {
   // white background
   svg.append("rect").attr("width", w).attr("height", h).attr("fill", "#fff");
 
-  // title
+  // title (anchored close to actual map top)
   svg.append("text")
     .attr("id", "svg-title")
-    .attr("x", w / 2).attr("y", 20)
+    .attr("x", w / 2).attr("y", Math.max(titleFontSize + 4, mapVisualTop - 38))
     .attr("text-anchor", "middle")
     .attr("font-family", "system-ui, sans-serif")
-    .attr("font-size", 17).attr("font-weight", 600).attr("fill", "#222")
+    .attr("font-size", titleFontSize).attr("font-weight", 600).attr("fill", "#222")
     .text(titleInput.value);
-
-  // subtitle (metric label)
-  svg.append("text")
-    .attr("id", "svg-subtitle")
-    .attr("x", w / 2).attr("y", titleH - 2)
-    .attr("text-anchor", "middle")
-    .attr("font-family", "system-ui, sans-serif")
-    .attr("font-size", 12).attr("fill", "#888")
-    .text(subtitleInput.value);
 
   // map group
   mapGroup = svg.append("g").attr("id", "map-group");
 
-  projection = createProjection(w, mapH);
-  path = d3.geoPath(projection);
-
-  // clip the map area so zoom doesn't bleed into title/legend
-  svg.append("defs").append("clipPath").attr("id", "map-clip")
-    .append("rect").attr("x", 0).attr("y", titleH).attr("width", w).attr("height", mapH);
-  mapGroup.attr("clip-path", "url(#map-clip)");
-
-  // offset map group below title
-  const innerG = mapGroup.append("g").attr("id", "map-inner").attr("transform", `translate(0, ${titleH})`);
-
-  // zoom + pan
-  const zoom = d3.zoom()
-    .scaleExtent([1, 12])
-    .on("zoom", e => innerG.attr("transform",
-      `translate(${e.transform.x}, ${e.transform.y + titleH}) scale(${e.transform.k})`));
-  svg.call(zoom);
+  // offset map group to leave title space above projected map
+  mapGroup.append("g").attr("id", "map-inner").attr("transform", `translate(0, ${mapOffsetY})`);
 
   drawCountries();
 }
@@ -481,7 +691,10 @@ function getColorScale() {
   const interpolator = getInterpolator();
 
   if (scaleType === "log") {
-    return d3.scaleSequentialLog(interpolator).domain([Math.max(1, extent[0]), extent[1]]);
+    const logMin = Math.max(1, extent[0]);
+    let logMax = Math.pow(10, Math.ceil(Math.log10(Math.max(logMin, extent[1]))));
+    if (logMax <= logMin) logMax = logMin * 10;
+    return d3.scaleSequentialLog(interpolator).domain([logMin, logMax]);
   } else {
     return d3.scaleSequential(interpolator).domain(extent);
   }
@@ -522,87 +735,105 @@ function renderMap() {
   else drawCountries();
 }
 
-// --- legend (segmented blocks inside SVG) ---
+// --- legend (continuous gradient inside SVG) ---
 function drawLegend(colorScale) {
   svg.selectAll(".legend-group").remove();
+  svg.selectAll(".legend-defs").remove();
   const values = Object.values(dataByA3);
   if (!values.length) return;
 
   const vb = svg.attr("viewBox").split(" ").map(Number);
   const svgW = vb[2], svgH = vb[3];
   const totalW = +legendWidthInput.value;
-  const tickCount = +legendTicksInput.value;
   const fontSize = +legendFontsizeInput.value;
-  const blockH = fontSize + 4;
+  const barH = Math.max(10, fontSize + 1);
   const domain = colorScale.domain();
+  const minVal = domain[0];
+  const maxVal = domain[1];
 
   const lg = svg.append("g").attr("class", "legend-group");
+  const defs = svg.append("defs").attr("class", "legend-defs");
+  const gradient = defs.append("linearGradient")
+    .attr("id", "legend-gradient")
+    .attr("x1", "0%").attr("x2", "100%")
+    .attr("y1", "0%").attr("y2", "0%");
 
-  // generate breakpoints for the blocks
-  let breaks;
-  if (scaleType === "log") {
-    // powers of 10 that span the domain
-    const logMin = Math.floor(Math.log10(Math.max(1, domain[0])));
-    const logMax = Math.ceil(Math.log10(domain[1]));
-    breaks = [];
-    for (let p = logMin; p <= logMax; p++) breaks.push(Math.pow(10, p));
-    // limit to tickCount
-    while (breaks.length > tickCount + 1) {
-      // remove every other interior break
-      const newBreaks = [breaks[0]];
-      for (let i = 1; i < breaks.length - 1; i++) {
-        if (i % 2 === 0) newBreaks.push(breaks[i]);
-      }
-      newBreaks.push(breaks[breaks.length - 1]);
-      breaks = newBreaks;
-    }
-  } else {
-    const step = (domain[1] - domain[0]) / tickCount;
-    breaks = [];
-    for (let i = 0; i <= tickCount; i++) breaks.push(domain[0] + i * step);
+  for (let i = 0; i <= 100; i++) {
+    const t = i / 100;
+    const val = (scaleType === "log")
+      ? minVal * Math.pow(maxVal / minVal, t)
+      : minVal + (maxVal - minVal) * t;
+    gradient.append("stop")
+      .attr("offset", `${i}%`)
+      .attr("stop-color", colorScale(val));
   }
 
-  const nBlocks = breaks.length - 1;
-  if (nBlocks < 1) return;
-  const blockW = totalW / nBlocks;
   const legendX = (svgW - totalW) / 2;
-  const legendY = svgH - blockH - fontSize - 8;
+  const legendLabel = legendLabelInput.value.trim();
+  const labelGap = legendLabel ? fontSize + 8 : 0;
+  const legendY = Math.min(
+    svgH - barH - fontSize - 14,
+    mapVisualBottom + 12 + labelGap
+  );
 
-  // draw color blocks
-  for (let i = 0; i < nBlocks; i++) {
-    const midVal = (scaleType === "log")
-      ? Math.pow(10, (Math.log10(breaks[i]) + Math.log10(breaks[i + 1])) / 2)
-      : (breaks[i] + breaks[i + 1]) / 2;
-    lg.append("rect")
-      .attr("x", legendX + i * blockW).attr("y", legendY)
-      .attr("width", blockW).attr("height", blockH)
-      .attr("fill", colorScale(midVal));
-  }
-
-  // labels below each break
-  breaks.forEach((b, i) => {
+  if (legendLabel) {
     lg.append("text")
-      .attr("x", legendX + i * blockW).attr("y", legendY + blockH + fontSize + 2)
+      .attr("x", svgW / 2).attr("y", legendY - 6)
       .attr("text-anchor", "middle")
       .attr("font-family", "system-ui, sans-serif")
       .attr("font-size", fontSize)
-      .attr("fill", "#555")
-      .text(fmtNum(b));
-  });
+      .attr("fill", "#666")
+      .text(legendLabel);
+  }
+
+  lg.append("rect")
+    .attr("x", legendX).attr("y", legendY)
+    .attr("width", totalW).attr("height", barH)
+    .attr("fill", "url(#legend-gradient)");
+
+  const legendScale = (scaleType === "log")
+    ? d3.scaleLog().domain([minVal, maxVal]).range([legendX, legendX + totalW])
+    : d3.scaleLinear().domain([minVal, maxVal]).range([legendX, legendX + totalW]);
+  let tickValues;
+  if (scaleType === "log") {
+    const startPow = Math.floor(Math.log10(Math.max(1, minVal)));
+    const endPow = Math.ceil(Math.log10(maxVal));
+    tickValues = [];
+    for (let p = startPow; p <= endPow; p++) tickValues.push(Math.pow(10, p));
+  } else {
+    tickValues = legendScale.ticks(5).filter(v => v >= minVal && v <= maxVal);
+  }
+  if (!tickValues.length) tickValues = [minVal, maxVal];
+
+  const axis = d3.axisBottom(legendScale)
+    .tickValues(tickValues)
+    .tickFormat(d => fmtNum(d))
+    .tickSizeOuter(0);
+
+  const axisG = lg.append("g")
+    .attr("transform", `translate(0, ${legendY + barH})`)
+    .call(axis);
+  axisG.selectAll("text")
+    .attr("font-family", "system-ui, sans-serif")
+    .attr("font-size", fontSize)
+    .attr("fill", "#555");
+  axisG.selectAll("line").attr("stroke", "#666");
+  axisG.select("path").attr("stroke", "#666");
 }
 
 // --- controls ---
 metricSelect.addEventListener("change", () => {
-  subtitleInput.value = metricSelect.value;
-  if (svg) svg.select("#svg-subtitle").text(metricSelect.value);
+  legendLabelInput.value = metricSelect.value;
   processData();
 });
 titleInput.addEventListener("input", () => {
   if (svg) svg.select("#svg-title").text(titleInput.value);
 });
-subtitleInput.addEventListener("input", () => {
-  if (svg) svg.select("#svg-subtitle").text(subtitleInput.value);
+titleFontsizeInput.addEventListener("input", () => {
+  document.getElementById("title-fontsize-val").textContent = titleFontsizeInput.value;
+  if (worldTopo) rebuildMap();
 });
+legendLabelInput.addEventListener("input", () => { if (worldTopo) rebuildMap(); });
 colorSelect.addEventListener("change", () => { if (svg) drawCountries(); });
 projectionSelect.addEventListener("change", rebuildMap);
 btnLog.addEventListener("click", () => { scaleType = "log"; btnLog.classList.add("active"); btnLinear.classList.remove("active"); if (svg) drawCountries(); });
@@ -611,13 +842,18 @@ btnLinear.addEventListener("click", () => { scaleType = "linear"; btnLinear.clas
 // legend controls
 function updateLegendDisplay() {
   document.getElementById("legend-width-val").textContent = legendWidthInput.value;
-  document.getElementById("legend-ticks-val").textContent = legendTicksInput.value;
   document.getElementById("legend-fontsize-val").textContent = legendFontsizeInput.value;
-  if (svg) drawCountries();
+  if (worldTopo) rebuildMap();
 }
 legendWidthInput.addEventListener("input", updateLegendDisplay);
-legendTicksInput.addEventListener("input", updateLegendDisplay);
 legendFontsizeInput.addEventListener("input", updateLegendDisplay);
+shareLinkBtn.addEventListener("click", copyShareLink);
+
+window.addEventListener("resize", () => {
+  if (!worldTopo) return;
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => rebuildMap(), 120);
+});
 
 // --- export PNG (high quality) ---
 document.getElementById("export-png").addEventListener("click", () => {
@@ -647,6 +883,7 @@ document.getElementById("export-png").addEventListener("click", () => {
 });
 
 // --- init ---
+applyStateFromHash();
 loadWorld().then(() => initMap());
 </script>
 </body>
