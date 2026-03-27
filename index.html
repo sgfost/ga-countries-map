@@ -648,8 +648,14 @@ function initMap() {
   path = d3.geoPath(projection);
   const featureCollection = { type: "FeatureCollection", features: countries };
   const projectedBounds = path.bounds(featureCollection);
+  const mapX0 = projectedBounds[0][0];
   const mapY0 = projectedBounds[0][1];
   const mapY1 = projectedBounds[1][1];
+  const NATURAL_EARTH_X_SHIFT = -50; // tweak this to fine-tune left/right balance
+  let mapOffsetX = 0;
+  if (projectionSelect.value === "geoNaturalEarth1") {
+    mapOffsetX = NATURAL_EARTH_X_SHIFT;
+  }
   const mapOffsetY = topPad + titleFontSize + titleGapToMap - mapY0;
 
   mapVisualTop = mapY0 + mapOffsetY;
@@ -678,8 +684,8 @@ function initMap() {
   // map group
   mapGroup = svg.append("g").attr("id", "map-group");
 
-  // offset map group to leave title space above projected map
-  mapGroup.append("g").attr("id", "map-inner").attr("transform", `translate(0, ${mapOffsetY})`);
+  // offset map group to center geometry and leave title space above map
+  mapGroup.append("g").attr("id", "map-inner").attr("transform", `translate(${mapOffsetX}, ${mapOffsetY})`);
 
   drawCountries();
 }
